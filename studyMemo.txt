@@ -1,0 +1,236 @@
+따라하며 배우는 NestJS
+
+# nestjs 설치
+- npm i -g install @nestjs/cli
+-nest new {APP_NAME}
+
+
+# 순서
+-main.ts에서 앱을 생성함.
+-앱모듈은 app.modules.ts
+
+# BoardModule 생성
+>nest g module {module_name}
+
+
+# 데코레이터
+@Controller('/boards')
+export class BoardsController {...}
+
+#Handler
+-핸들러는  @Get @Post @Delete 등과 같은 데코레이터로 장식 된 컨트롤 클래스 내의 단순한 메서드
+@Controller('/boards')
+export class BoardsContoller {
+ @Get()
+ getBoards() : string {
+	...
+ } 
+}
+
+
+
+# BoardContoller 생성
+> nest g controller boards --no-spect 
+
+--no-spec : 테스트소스코드 생성 x
+
+
+#Provide
+-프로바디어는 Nest 기본개념
+-대부분 Nest클래스는 서비스,리포지토리, 팩토리, 헬퍼등 프로바이더로 취급될수있음.
+-종속성으로 주입하자~! DI
+-Controller에는 많은 서비스가 필요할수있음. 
+- SPRING이랑 비스읏하네~
+@Module({
+  controllers: [BoardsController]
+})
+
+#Service
+-@injectable 데코레이터로 감싸져서 모듈에 제공되며, 이 서비스 인스턴스는 앱전체에서 사용가능함.
+-서비스는 컨트롤러에서 데이터의 유효성 체크를 하거나, 데이터베이스에 아이템을 생성하는 등의 작업을 함.
+@injectable()
+export class AppService {
+	...
+}
+
+#Service를 Controller
+
+# BoardService 생성
+> nest g service boards --no-spect 
+
+
+#private
+private로 설정하지 않으면, 다른곳에서 접근할수가있음..
+
+#board.model.ts
+- 게시물에는 이름, 공개글여부, 이름 등... 이것을 Model
+- Board를 배열로.
+export class BoardsService {
+  private boards:Board[] = [];
+
+  getAllBoards():Board[] {
+    return this.boards;
+  }
+}
+
+#uuid는 모듈
+>npm install uuid --save
+
+# @Body
+
+#DTO
+-데이터 교환을 위한 객체
+-NestJS에서는 Class를 정의해서 사용하는것을 추천
+-> 클래스는 인터페이스와 다르게 런타임에서 작동하기 때문에, 파이프 같은 기능을 이용할때 유용
+
+-DTO는 안쪽에 형식은
+create-board.dto.ts
+
+-변경하게되면, controller에서 @Body부분을 @Body createBoardDto:CreateBoardDto 로 변경
+->서비스도 변경해줘야함. 그후, title,description을 createBoardDto에서 가져오는것으로 변경.
+-> 이건마치... spring에서 객체에 자동으로 해당값을 집어넣어서 해당 비즈니스로직에서 사용하는것..
+
+
+#PIPE
+- @Injectable() 데코레이터로 주석이 달린 클래스
+
+-Data Tarnsformation
+-Data validation
+
+-BindingPipes 3가지 Handler-level, Parameter-level, global-level
+
+#Hnadler-level
+@UsePipes(pipe) 데코레이터
+
+#Parameter-level Pipes
+@Body('title', ParameterPipe) ...
+
+#GlobalPipes
+app.useGlobalPipes(GlobalPipes);
+
+-이미 만들어져있는 Pipe [ ParseIntPipe, ... ]
+
+
+#유효성체크
+>npm install class-validator class-transformer --save
+
+export class CreateBoardDto {
+  @IsNotEmpty()
+  title: string;
+
+  @IsNotEmpty()
+  description: string;
+}
+
+--
+  @Post()
+  @UsePipes(ValidationPipe)
+  createBoard(@Body() createBoardDto: CreateBoardDto): Board {
+    return this.boardsService.createBoard(createBoardDto);
+  }
+
+
+#커스텀 파이프
+
+export class BoardStatusValidationPipe implements PipeTransform { }
+
+
+#Postgresql 설치
+
+#TypeORM
+-nodejs에서 실행되고 typeScript로 작성된 객체 관계형 매퍼 라이브러리
+-ORM(Object Relational Mapping) : 객체와 관계형 DB의데이터를 자동으로 변형 및 연결하는 작업.
+
+특징
+-모델을 기반으로 데이터베이스 테이블 체계를 자동으로 생성합니다.
+-데이터베이스에서 개체를 쉽게 삽입,업데이트 및 삭제할수있습니다.
+-간단한 CLI명령을 제공합니다.
+-테이블간의 매핑(1:1,1:N,N:N)을 만듭니다.
+-다른모듈과 쉽게 통일합니다.
+-ORM프레임워크를 사용하기 쉽습니다.
+
+
+#3가지 설치
+@nestjs/typeorm
+typeorm 모듈
+pg 모듈
+npm install pg typeorm @nestjs/typeorm --save
+
+
+
+#typeORM 설정파일 생성
+src>configs>typeorm.config.ts
+
+셋팅후, app.module.ts에 모듈 import
+imports: [BoardsModule, TypeOrmModule.forRoot(typeORMConfig)],
+
+#Entity
+왜 entity를?
+TypeORM을 사용할때는 DBㅌ체이블로 변환되는 Class이기때문에 Table을 만들지않고, 그안에 컬럼을 만듬.
+
+@Entity()
+-클래스가 엔티티임을 나타내는 데코레이터
+
+유니크값(PK) 
+@PrimaryGeneratedColumn()
+-특정 컬럼 열이 엔티티의 기본키 열임을 나타앰
+
+@Column()
+-엔티티의 title및 description같은 열을 나타내는데 사용됨
+
+
+
+#Repository
+-엔티티개체와 함께 작동하며, 엔티티찾기,삽입,생성 등을 처리함.
+typeorm공식문서 확인하면 좋음
+
+-DB와 관련된 일은 Repository에서 함.
+이것을 Repository Pattern이라고 함
+
+-파일생성
+board.repository.ts
+//여기서 Board는 entity
+@EntityRepository(Board)
+export class BoardRepository extends Repository<Board>(){}
+
+
+그후 board.module.ts 에 import
+imports: [TypeOrmModule.forFeature([BoardRepository])],
+
+
+
+#CRUD 하기전, 코드정리
+
+1.Service와 Controller 모두 주석
+2.Board.model 더이상 필요없음. (Entity 사용)
+3.board-status.enum.ts 로 이름 변경
+4. controller, service쪽 import구문 바뀐거 확인
+
+
+#DB에서 데이터 가져오기위해 Service에 종속성주입하기.
+-Service 의 constructor에 boardRepository 종속성주입 
+그리고 @InjectRepository() 데코레이터를 사용하여,이 서비스에서 BoardRepository를 이용한다고 알림.
+
+constructor(
+    @InjectRepository(BoardRepository)
+    private boardRepository: BoardRepository,
+  ) {}
+
+
+
+#typeORM에서 제공하는 findOne사용할것.
+-await async를 사용해야함.
+
+-service에서 findOneBy({id})로 해야함.
+-그후 controller getBoardById() 수정
+
+
+
+##큰일났다. EntityRepository 데코레이터가 사라져서, 커스텀을만들어야한다는데, 뭔소린지모르겠다
+url : https://prod.velog.io/@pk3669/typeorm-0.3.x-EntityRepository-%EB%8F%8C%EB%A0%A4%EC%A4%98
+아......
+
+https://velog.io/@sheoae12/NestJS-Custom-Repository-%EB%A7%8C%EB%93%A4%EA%B8%B0
+형님사랑합니다
+
+
