@@ -234,3 +234,166 @@ https://velog.io/@sheoae12/NestJS-Custom-Repository-%EB%A7%8C%EB%93%A4%EA%B8%B0
 형님사랑합니다
 
 
+
+
+# 해결후 getAllBoards도 만들고, delete도 만들고, updateBoardStatus도 만듬.
+
+# auth module도 만듬.
+nest g moudle auth
+nest g controller auth --no-spec
+nest g service auth --no-spec
+
+#UserRepository생성, UserEntity생성 후 imports 추가
+-- EntityRepository가 없으니, Board에서와 같이 처리.
+
+#dto 생성
+auth-credencial.dto.ts
+export class AuthCredntaisDto {
+  username: string;
+  password: string;
+}
+
+#class-validator 데이터 유효성체크 추가
+@IsString()
+@MinLength(N);
+@MaxLength(N);
+@Matches(/^정규식$/)
+
+
+#이렇게 설정한건, ValidationPipe로 넣어주어야함.
+//auth.controller.ts
+@Post('/signup')
+  signUp(
+    @Body(ValidationPipe) authCredntaisDto: AuthCredntaisDto,
+  ): Promise<void> {
+    return this.authService.createUser(authCredntaisDto);
+  }
+
+
+#UserName을 고유하게 설정하는 방법
+DB레벨에서 하는것 : Entity에서 @Unique() 사용
+-> @Unique(['username'])
+
+이렇게하면, 동일 ID 등록시 아래와 같은 결과 확인
+{
+    "statusCode": 500,
+    "message": "Internal server error"
+}
+
+--> message를 내입맛대로 하기 위해선, Controller 레벨에서 try-catch사용
+async createUser(authCredntaisDto: AuthCredntaisDto): Promise<void> {
+    const { username, password } = authCredntaisDto;
+    const user = this.create({ username, password });
+
+    try {
+      await this.save(user);
+    } catch (error) {
+      if (error.code === '23505') {
+        throw new ConflictException('Existing username');
+      } else {
+        throw new InternalServerErrorException();
+      }
+    }
+  }
+
+
+추신 : ConflictException은 409코드 에러를 의미하는데, "현재상태와 충돌했다"는 의미.
+보통 PUT 요청시에 발생.
+
+
+#비번 암호화 - bcrypt.js 사용
+npm install bcryptjs --save
+
+암호화방식
+1. 그냥
+2. 암호화키+알고리즘
+  -> 암호화키 털리면, 알고리즘은 거의다 오픈되어있어서 걍뚫림
+3. 해쉬방식
+  -> 레인보우테이블을 만들어놔서, 비교함
+4. 솔느(salt)+비밀번호(Plain paswrod)를 해시로 암호화해서 저장
+
+만드는방법은 요롷게
+
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = this.create({ username, password: hashedPassword });
+
+로그인시 비교하는건 이렇게 
+
+if (user && (await bcrypt.compare(password, user.password))) {}
+
+#JWT
+JWT는 Header(메타데이터)+Payload(정보,만료기간,...)+VerifySignature(서명,공개키...) 구성.
+제일중요한건.. 이건 어떻게 관리하려나..
+
+(1) Client가 JWT토큰을 Header에 담아서 보냄
+(2) 서버에서 받아서, Header+Payload 와 서버내에 secretText를 조합하여 VerifySignature 만듬.
+(3) Client가 보낸 VerifySignature와 서버에서 만든 VerifySignature 비교.
+
+JWT 설치, passport모듈 설치
+@nestjs/jwt
+@nestjs/passport
+passport-jwt
+passport
+
+>npm install @nestjs/jwt @nestjs/passport passport passport-jwt --save
+
+auth.module에 imports
+ imports: [
+    JwtModule.register({ secret: '', signOptions: { expiresIn: 60 * 60 } }),
+    TypeOrmModule.forFeature([User]),
+  ],
+
+secret : secret Text부분
+expiresin : 유효기간 60*60은 1시간
+
+
+passport도 등록.
+PassportModule.register({ defaultStrategy: 'jwt' }),
+defaultStrategy : 기본전략을 jwt로..
+
+
+# @types/passport-jwt 생성
+npm install @types/passport-jwt --save
+
+#jwt.strategy.ts 생성
+
+@Injectable() // 다른곳에서도 사용할수있게
+extends PassportStrategy(Strategy) {} JWT Strategy를 사용하기위해, extends
+
+constructor(..) {
+	super( { secretOrKey : "~~~", // auth.module에 추가했을때 쓴 secretText 값과 동일. 목적이다르기에 속성이다름
+		jwtFromRequest:ExtractJwt.fromAuthHeaderAsBearerToken() // token값을 Header에서 bearerToken Type에서 가져오겠다.
+} )
+}
+
+#auth.module의 provides와 exports에 jwtStrategy와 PassportModule 추가해줘야함.
+exports에 추가하는 이유는, 다른곳에서도 이것을 사용하기 위해서.
+
+
+#이제 Request객체 내에 jwtStrategy에서 반환하는 user객체를 넣고싶은데... 어떻게하냐?
+UseGuards 안에 @nestjs/passport에서 가져온 AutGuard()를 넣어주자.
+
+-- 
+NestJS에는 여러가지 미들웨어가 있다. Pipes, Filters, Guards, Interceptors 
+	Pipes : 유효성검사, Filter : , Guards : 인증미들웨어, Interceptor : 로깅
+
+미들웨어 불러지는 순서@@
+middleware -> guard -=> interceptor -> pipe -> controller -> service -> controller -> interceptor -> filter -> client
+
+--
+
+@UseGuards(AuthGuard()) 추가하면 , Request에 이게 추가됨
+
+authInfo: undefined,
+  user: User {
+    id: 7,
+    username: '라ㅋ따뚜이',
+    password: '$2a$10$ImuFqNPJIxJE5W7pLZyNIutTbUw.RXhEUJdA3ZuGSdioSVf4JlxNS'
+  },
+  [Symbol(kCapture)]: false,
+
+
+
+
